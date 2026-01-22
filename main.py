@@ -37,13 +37,15 @@ async def fetch_qt_data():
         title_text = title_element.get_text(strip=True) if title_element else "제목 없음"
         bible_ref = sub_title_element.get_text(strip=True) if sub_title_element else "본문 정보 없음"
 
-        # 2. 해설 파싱 (수정된 로직)
+        # 2. 해설 파싱 (수정된 로직: 나의 적용, 기도하기 제외)
         # 제공해주신 HTML 구조: .body_cont > div(.b_text, .g_text, .text)
         body_cont = soup.select_one(".body_cont")
         
         commentary_text = ""
         if body_cont:
             # .body_cont 바로 아래 자식 div들을 순서대로 순회하며 텍스트 조합
+            skip_section = False # 특정 섹션 스킵을 위한 플래그
+            
             for child in body_cont.find_all("div", recursive=False):
                 text = child.get_text(separator="\n", strip=True)
                 if not text:
@@ -56,13 +58,19 @@ async def fetch_qt_data():
                     commentary_text += text + "\n\n"
                     
                 elif "g_text" in classes:
-                    # 소제목 (성경 이해, 나의 적용, 기도하기 등) -> 이모지 추가
-                    # 이미 텍스트에 "성경 이해"가 포함되어 있으므로 앞에 이모지만 붙임
-                    commentary_text += f"📖 {text}\n"
+                    # 소제목 (성경 이해, 나의 적용, 기도하기 등)
+                    # "나의 적용"과 "기도하기"는 제외 요청
+                    if "나의 적용" in text or "기도하기" in text:
+                        skip_section = True
+                    else:
+                        skip_section = False
+                        # "성경 이해" 등은 포함
+                        commentary_text += f"📖 {text}\n"
                     
                 elif "text" in classes:
-                    # 본문 내용
-                    commentary_text += text + "\n\n"
+                    # 본문 내용 (스킵 플래그가 꺼져있을 때만 추가)
+                    if not skip_section:
+                        commentary_text += text + "\n\n"
         else:
             commentary_text = "해설 내용을 불러올 수 없습니다."
 
@@ -160,7 +168,7 @@ async def get_qt(request: Request):
 
 @app.get("/")
 async def root():
-    return {"message": "KakaoTalk QT Bot Server (Fixed Parser Ver) is Running!"}
+    return {"message": "KakaoTalk QT Bot Server (Excluded Apply/Prayer Ver) is Running!"}
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
