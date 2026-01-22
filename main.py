@@ -39,20 +39,11 @@ async def fetch_qt_data():
         # 3. 찬송 (없으면 '-')
         song_text = "-" 
 
-        # 4. 해설 (commentary)
-        commentary_element = soup.select_one("#commentary_view")
-        commentary_text = ""
-        if commentary_element:
-            commentary_text = commentary_element.get_text(separator="\n", strip=True)
-        else:
-            commentary_text = "해설 정보가 없습니다."
-
         return {
             "title": title_text,
             "bible_ref": bible_ref,
             "bible_text": bible_text,
             "song": song_text,
-            "commentary": commentary_text,
             "url": QT_URL
         }
 
@@ -84,7 +75,7 @@ async def get_qt(request: Request):
     # --- 카카오톡 응답 생성 ---
     
     # 1. 첫 번째 말풍선: 제목, 본문 (기존 유지)
-    main_msg = f"✝오늘의 QT(순)✝\n\n[{qt_data['title']}]\n본문: {qt_data['bible_ref']}\n\n{qt_data['bible_text'][:800]}"
+    main_msg = f"✝오늘의 QT(매일성경(순))✝\n\n[{qt_data['title']}]\n본문: {qt_data['bible_ref']}\n\n{qt_data['bible_text'][:800]}"
     if len(qt_data['bible_text']) > 800:
         main_msg += "..."
 
