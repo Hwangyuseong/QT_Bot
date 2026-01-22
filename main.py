@@ -11,12 +11,13 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
-# 수정됨: 매일성경 순 (청소년/청년용) URL로 변경 (?qt_ty=QT6 추가)
+# 매일성경 순 (청소년/청년용) URL (?qt_ty=QT6)
 QT_URL = "https://sum.su.or.kr:8888/bible/today?qt_ty=QT6"
 
 async def fetch_qt_data():
     """
     매일성경 순(QT6) 내용을 크롤링합니다.
+    (해설 부분 제거됨)
     """
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -74,18 +75,15 @@ async def get_qt(request: Request):
 
     # --- 카카오톡 응답 생성 ---
     
-    # 1. 첫 번째 말풍선: 제목, 본문 (기존 유지)
-    main_msg = f"✝오늘의 QT(매일성경(순))✝\n\n[{qt_data['title']}]\n본문: {qt_data['bible_ref']}\n\n{qt_data['bible_text'][:800]}"
-    if len(qt_data['bible_text']) > 800:
+    # 1. 첫 번째 말풍선: 제목, 본문
+    # 텍스트 길이 제한 고려 (최대 1000자, 안전하게 900자 컷)
+    main_msg = f"✝오늘의 QT(순)✝\n\n[{qt_data['title']}]\n본문: {qt_data['bible_ref']}\n\n{qt_data['bible_text'][:900]}"
+    if len(qt_data['bible_text']) > 900:
         main_msg += "..."
 
-    # 2. 두 번째 말풍선: 해설 (요청사항: '오늘의 묵상' 타이틀 제거)
-    commentary_msg = f"{qt_data['commentary'][:900]}"
-    if len(qt_data['commentary']) > 900:
-        commentary_msg += "...\n(더보기는 버튼 클릭)"
+    # 2. 두 번째 말풍선: 링크 및 인사말 (텍스트 형태로 원상복구)
+    footer_msg = f"🔗 해설 전문 보기: {qt_data['url']}\n\n🌟아침에 말씀으로 시작하며 하나님의 은혜 충만으로 하루를 시작해 보아요🌟"
 
-    # 3. 세 번째 말풍선: BasicCard (요청사항: 버튼으로 변경)
-    # 이미지가 없는 베이직 카드 + 버튼 조합
     response_body = {
         "version": "2.0",
         "template": {
@@ -97,20 +95,7 @@ async def get_qt(request: Request):
                 },
                 {
                     "simpleText": {
-                        "text": commentary_msg
-                    }
-                },
-                {
-                    "basicCard": {
-                        "title": "오늘 하루도 승리하세요! 🙏",
-                        "description": "아침에 말씀으로 시작하며 하나님의 은혜 충만으로 하루를 시작해 보아요",
-                        "buttons": [
-                            {
-                                "action": "webLink",
-                                "label": "해설 전문 보기",
-                                "webLinkUrl": qt_data['url']
-                            }
-                        ]
+                        "text": footer_msg
                     }
                 }
             ],
