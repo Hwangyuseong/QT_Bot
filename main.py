@@ -181,7 +181,7 @@ async def get_qt(request: Request):
                  {
                     "messageText": "오늘의 QT",
                     "action": "message",
-                    "label": "🔄 다시보기"
+                    "label": "🔄 QT불러오기"
                 }
             ]
         }
