@@ -17,10 +17,14 @@ QT_URL = "https://sum.su.or.kr:8888/bible/today?qt_ty=QT6"
 async def fetch_qt_data():
     """
     매일성경 순(QT6) 내용을 크롤링합니다.
-    (성경 본문 구절 제외 / 해설 전문 포함)
+    (성경 본문 구절 제외 / 해설 전문 포함 / 성경 이해 헤더 추가)
     """
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        # User-Agent 헤더 추가 (모바일/PC 페이지 구조 차이 방지)
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        }
+        async with httpx.AsyncClient(timeout=10.0, headers=headers) as client:
             response = await client.get(QT_URL)
             response.raise_for_status()
             
@@ -37,9 +41,14 @@ async def fetch_qt_data():
         # 성경 본문 구절(#body_list) 대신 해설(#commentary_view)을 가져옵니다.
         commentary_element = soup.select_one("#commentary_view")
         
+        commentary_text = ""
         if commentary_element:
             # 보기 좋게 줄바꿈 처리
-            commentary_text = commentary_element.get_text(separator="\n", strip=True)
+            raw_text = commentary_element.get_text(separator="\n", strip=True)
+            
+            # 요청사항: "📖 성경 이해" 라고 헤더가 있어야 함.
+            # 크롤링한 텍스트 맨 앞에 강제로 타이틀을 붙여줍니다.
+            commentary_text = "📖 성경 이해\n" + raw_text
         else:
             commentary_text = "해설 내용을 불러올 수 없습니다."
 
@@ -78,16 +87,17 @@ async def get_qt(request: Request):
     # --- 카카오톡 응답 생성 (내용 분할 알고리즘) ---
     # 카카오톡 말풍선 1개 한계: 1000자
     # 전략: 
-    # 1. 첫 번째 말풍선: 제목 + 본문 범위 + 해설 앞부분 (약 900자)
+    # 1. 첫 번째 말풍선: 제목 + 본문 범위 + "📖 성경 이해" + 해설 앞부분
     # 2. 두 번째 말풍선: 해설 뒷부분 (나머지)
     # 3. 세 번째 말풍선: 링크 + 인사말
 
     outputs = []
     
     # -- 헤더 생성 --
+    # 여기서 "📖 성경 이해"를 붙이지 않고, 위에서 fetch_qt_data가 이미 붙여준 텍스트(qt_data['commentary'])를 사용합니다.
     header = f"✝오늘의 QT(순)✝\n\n[{qt_data['title']}]\n본문: {qt_data['bible_ref']}\n\n"
     
-    # 해설 전체 텍스트
+    # 해설 전체 텍스트 (이미 "📖 성경 이해"가 포함됨)
     full_commentary = qt_data['commentary']
     
     # 첫 번째 말풍선에 들어갈 해설 길이 계산 (안전하게 950자 - 헤더길이)
