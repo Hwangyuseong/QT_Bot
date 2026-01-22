@@ -32,27 +32,33 @@ async def fetch_qt_data():
         soup = BeautifulSoup(response.text, 'html.parser')
 
         # 1. 날짜 및 제목 추출
-        title_element = soup.select_one("#bible_text") 
-        sub_title_element = soup.select_one("#bibleinfo_box") 
+        # [수정] ID 선택자(#) 대신 Class 선택자(.) 사용 (HTML 구조 변경 대응)
+        # 예: <div class="bible_text">...</div>
+        title_element = soup.select_one(".bible_text") 
+        # 예: <div class="bibleinfo_box" id="bibleinfo_box_3">...</div> (ID가 동적이므로 클래스로 접근)
+        sub_title_element = soup.select_one(".bibleinfo_box") 
         
         title_text = title_element.get_text(strip=True) if title_element else "제목 없음"
         
         # [수정] 정규식으로 본문과 찬송 정보 정확히 분리하기
-        # 사이트 원문 예시: "본문 : 시편 1:1-6 (찬송 : 1장)"
         raw_info = sub_title_element.get_text(strip=True) if sub_title_element else ""
         
         bible_range = "본문 정보 없음"
         hymn_text = "-"
         
-        # 정규식 패턴: "본문" 뒤의 내용과 "(찬송" 뒤의 내용을 각각 그룹으로 추출
-        # 예: "본문 : 시편 1:1-6 (찬송 : 1장)" -> group(1): "시편 1:1-6", group(2): "1장"
-        match = re.search(r"본문\s*[:]?\s*(.*?)\s*\(찬송\s*[:]?\s*(.*?)\)", raw_info)
+        # [수정] 정규식 패턴 개선: 괄호 유무와 '찬송'/'찬송가' 변형 모두 대응
+        # 패턴 설명:
+        # 본문\s*[:]?\s* -> "본문" 글자와 선택적 콜론
+        # (.*?) -> 본문 내용 (그룹 1)
+        # \s*[(]?찬송(?:가)?\s*[:]?\s* -> 공백, 여는괄호(옵션), "찬송" 또는 "찬송가", 콜론(옵션)
+        # (.*?)[)]?$ -> 찬송가 내용 (그룹 2), 닫는괄호(옵션), 문자열 끝
+        match = re.search(r"본문\s*[:]?\s*(.*?)\s*[(]?찬송(?:가)?\s*[:]?\s*(.*?)[)]?$", raw_info)
         
         if match:
             bible_range = match.group(1).strip()
             hymn_text = match.group(2).strip()
         else:
-            # 패턴 매칭 실패 시(찬송이 없거나 형식이 다른 경우) 단순 처리
+            # 패턴 매칭 실패 시 단순 처리
             bible_range = raw_info.replace("본문 :", "").replace("본문:", "").strip()
 
         # 2. 해설 파싱 (나의 적용, 기도하기 제외)
@@ -175,7 +181,7 @@ async def get_qt(request: Request):
                  {
                     "messageText": "오늘의 QT",
                     "action": "message",
-                    "label": "🔄 QT불러오기"
+                    "label": "🔄 다시보기"
                 }
             ]
         }
