@@ -4,6 +4,7 @@ from fastapi.responses import JSONResponse
 import httpx
 from bs4 import BeautifulSoup
 import logging
+import re  # 정규표현식 모듈 추가
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
@@ -36,25 +37,30 @@ async def fetch_qt_data():
         
         title_text = title_element.get_text(strip=True) if title_element else "제목 없음"
         
-        # [수정] 본문 정보 가져오기 및 텍스트 후처리
+        # [수정] 정규식으로 본문과 찬송 정보 정확히 분리하기
         # 사이트 원문 예시: "본문 : 시편 1:1-6 (찬송 : 1장)"
-        bible_ref = sub_title_element.get_text(strip=True) if sub_title_element else "본문 정보 없음"
+        raw_info = sub_title_element.get_text(strip=True) if sub_title_element else ""
         
-        # [수정] 포맷팅 개선: 불필요한 텍스트 제거 및 줄바꿈 처리
-        if bible_ref:
-            # 1. "본문 :" 제거 (중복 방지)
-            bible_ref = bible_ref.replace("본문 :", "").replace("본문:", "").strip()
-            
-            # 2. "(찬송" 패턴을 찾아서 줄바꿈(\n) + "찬송가"로 변경하고 닫는 괄호 ")" 제거
-            # 결과 예시: "시편 1:1-6\n찬송가 : 1장"
-            bible_ref = bible_ref.replace("(찬송", "\n찬송가").replace(")", "")
+        bible_range = "본문 정보 없음"
+        hymn_text = "-"
+        
+        # 정규식 패턴: "본문" 뒤의 내용과 "(찬송" 뒤의 내용을 각각 그룹으로 추출
+        # 예: "본문 : 시편 1:1-6 (찬송 : 1장)" -> group(1): "시편 1:1-6", group(2): "1장"
+        match = re.search(r"본문\s*[:]?\s*(.*?)\s*\(찬송\s*[:]?\s*(.*?)\)", raw_info)
+        
+        if match:
+            bible_range = match.group(1).strip()
+            hymn_text = match.group(2).strip()
+        else:
+            # 패턴 매칭 실패 시(찬송이 없거나 형식이 다른 경우) 단순 처리
+            bible_range = raw_info.replace("본문 :", "").replace("본문:", "").strip()
 
-        # 2. 해설 파싱 (수정된 로직: 나의 적용, 기도하기 제외)
+        # 2. 해설 파싱 (나의 적용, 기도하기 제외)
         body_cont = soup.select_one(".body_cont")
         
         commentary_text = ""
         if body_cont:
-            skip_section = False # 특정 섹션 스킵을 위한 플래그
+            skip_section = False 
             
             for child in body_cont.find_all("div", recursive=False):
                 text = child.get_text(separator="\n", strip=True)
@@ -68,8 +74,7 @@ async def fetch_qt_data():
                     commentary_text += text + "\n\n"
                     
                 elif "g_text" in classes:
-                    # 소제목 (성경 이해, 나의 적용, 기도하기 등)
-                    # "나의 적용"과 "기도하기"는 제외
+                    # "나의 적용", "기도하기" 제외
                     if "나의 적용" in text or "기도하기" in text:
                         skip_section = True
                     else:
@@ -88,7 +93,8 @@ async def fetch_qt_data():
 
         return {
             "title": title_text,
-            "bible_ref": bible_ref,
+            "bible_range": bible_range,
+            "hymn": hymn_text,
             "commentary": commentary_text,
             "url": QT_URL
         }
@@ -121,9 +127,11 @@ async def get_qt(request: Request):
     # --- 카카오톡 응답 생성 ---
     outputs = []
     
-    # -- 헤더 생성 --
-    # [수정] bible_ref에 이미 줄바꿈과 포맷팅이 적용됨
-    header = f"✝오늘의 QT(순)✝\n\n[{qt_data['title']}]\n{qt_data['bible_ref']}\n\n"
+    # -- 헤더 생성 (요청하신 포맷 적용) --
+    # [타이틀]
+    # 본문: ...
+    # 찬송: ...
+    header = f"✝오늘의 QT(순)✝\n\n[{qt_data['title']}]\n본문: {qt_data['bible_range']}\n찬송: {qt_data['hymn']}\n\n"
     
     full_commentary = qt_data['commentary']
     
@@ -152,7 +160,6 @@ async def get_qt(request: Request):
         })
 
     # 3. 세 번째 말풍선 (링크 및 인사말)
-    # [수정] "해설 전문 보기:" 다음에 줄바꿈(\n) 추가
     footer_msg = f"🔗 해설 전문 보기:\n{qt_data['url']}\n\n🌟아침에 말씀으로 시작하며 하나님의 은혜 충만으로 하루를 시작해 보아요🌟"
     outputs.append({
         "simpleText": {
@@ -168,7 +175,7 @@ async def get_qt(request: Request):
                  {
                     "messageText": "오늘의 QT",
                     "action": "message",
-                    "label": "🔄 다시보기"
+                    "label": "🔄 QT불러오기"
                 }
             ]
         }
@@ -178,7 +185,7 @@ async def get_qt(request: Request):
 
 @app.get("/")
 async def root():
-    return {"message": "KakaoTalk QT Bot Server (Formatting Update Ver) is Running!"}
+    return {"message": "KakaoTalk QT Bot Server (Formatting Final Ver) is Running!"}
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
