@@ -1,10 +1,9 @@
-import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import httpx
 from bs4 import BeautifulSoup
 import logging
-import re  # 정규표현식 모듈 추가
+import re
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
@@ -18,10 +17,8 @@ QT_URL = "https://sum.su.or.kr:8888/bible/today?qt_ty=QT6"
 async def fetch_qt_data():
     """
     매일성경 순(QT6) 내용을 크롤링합니다.
-    (HTML 구조: .body_cont > .b_text, .g_text, .text 파싱)
     """
     try:
-        # User-Agent 헤더 추가
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
         }
@@ -32,33 +29,22 @@ async def fetch_qt_data():
         soup = BeautifulSoup(response.text, 'html.parser')
 
         # 1. 날짜 및 제목 추출
-        # [수정] ID 선택자(#) 대신 Class 선택자(.) 사용 (HTML 구조 변경 대응)
-        # 예: <div class="bible_text">...</div>
         title_element = soup.select_one(".bible_text") 
-        # 예: <div class="bibleinfo_box" id="bibleinfo_box_3">...</div> (ID가 동적이므로 클래스로 접근)
         sub_title_element = soup.select_one(".bibleinfo_box") 
         
         title_text = title_element.get_text(strip=True) if title_element else "제목 없음"
-        
-        # [수정] 정규식으로 본문과 찬송 정보 정확히 분리하기
         raw_info = sub_title_element.get_text(strip=True) if sub_title_element else ""
         
         bible_range = "본문 정보 없음"
         hymn_text = "-"
         
-        # [수정] 정규식 패턴 개선: 괄호 유무와 '찬송'/'찬송가' 변형 모두 대응
-        # 패턴 설명:
-        # 본문\s*[:]?\s* -> "본문" 글자와 선택적 콜론
-        # (.*?) -> 본문 내용 (그룹 1)
-        # \s*[(]?찬송(?:가)?\s*[:]?\s* -> 공백, 여는괄호(옵션), "찬송" 또는 "찬송가", 콜론(옵션)
-        # (.*?)[)]?$ -> 찬송가 내용 (그룹 2), 닫는괄호(옵션), 문자열 끝
+        # 정규식 패턴: 괄호 유무와 '찬송'/'찬송가' 변형 모두 대응
         match = re.search(r"본문\s*[:]?\s*(.*?)\s*[(]?찬송(?:가)?\s*[:]?\s*(.*?)[)]?$", raw_info)
         
         if match:
             bible_range = match.group(1).strip()
             hymn_text = match.group(2).strip()
         else:
-            # 패턴 매칭 실패 시 단순 처리
             bible_range = raw_info.replace("본문 :", "").replace("본문:", "").strip()
 
         # 2. 해설 파싱 (나의 적용, 기도하기 제외)
@@ -133,17 +119,10 @@ async def get_qt(request: Request):
     # --- 카카오톡 응답 생성 ---
     outputs = []
     
-    # -- 헤더 생성 (요청하신 포맷 적용) --
-    # [타이틀]
-    # 본문: ...
-    # 찬송: ...
     header = f"✝오늘의 QT(순)✝\n\n[{qt_data['title']}]\n본문: {qt_data['bible_range']}\n찬송: {qt_data['hymn']}\n\n"
-    
     full_commentary = qt_data['commentary']
     
-    # 첫 번째 말풍선 길이 제한
     limit_len = 950 - len(header)
-    
     part_1 = full_commentary[:limit_len]
     part_2 = full_commentary[limit_len:] 
     
@@ -191,7 +170,9 @@ async def get_qt(request: Request):
 
 @app.get("/")
 async def root():
-    return {"message": "KakaoTalk QT Bot Server (Formatting Final Ver) is Running!"}
+    return {"message": "KakaoTalk QT Bot Server is Running on Vercel!"}
 
+# Vercel 환경에서는 아래 구문이 무시되며, 로컬 테스트 시에만 작동합니다.
 if __name__ == "__main__":
+    import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
